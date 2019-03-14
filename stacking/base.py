@@ -53,6 +53,10 @@ from keras.callbacks import Callback
 ######### XGBoost #########
 import xgboost as xgb
 
+
+######### GBM #########
+import lightgbm as lgb
+
 ######### Vowpal Wabbit ##########
 #import wabbit_wappa as ww
 import os
@@ -64,11 +68,8 @@ import csv
 from sklearn.metrics import log_loss as ll
 from sklearn.metrics import roc_auc_score as AUC
 from sklearn.preprocessing import LabelEncoder
-from sklearn.cross_validation import KFold, StratifiedKFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.metrics import mean_squared_error
-
-
-
 
 
 
@@ -76,18 +77,21 @@ from sklearn.metrics import mean_squared_error
 cv_id_name='cv_id' #change if using fixed cv_index file
 n_folds = 5
 
-def create_cv_id(target, n_folds_ = 5, cv_id_name=cv_id_name, seed=407):
+def create_cv_id(train, target, n_folds_ = 5, cv_id_name=cv_id_name, seed=407):
     try:
-        a = StratifiedKFold(target['target'],n_folds=n_folds_, shuffle=True, random_state=seed)
-        cv_index = a.test_folds
-        print 'Done StratifiedKFold'
+        # a = StratifiedKFold(target['target'],n_folds=n_folds_, shuffle=True, random_state=seed)
+        a = StratifiedKFold(n_splits=n_folds_, shuffle=True, random_state=seed)
+        cv_index = a.split(target['target'])
+        # cv_index = a.test_folds
+        print ('Done StratifiedKFold')
     except:
         cv_index = np.empty(len(target))
-        a = KFold(len(target),n_folds=n_folds_, shuffle=True, random_state=seed)
-        for idx, i in enumerate(a):
+        # a = KFold(len(target),n_splits=n_folds_, shuffle=True, random_state=seed)
+        a = KFold(n_splits=n_folds_, shuffle=True, random_state=seed)
+        for idx, i in enumerate(a.split(target['target'])):
             cv_index[i[1]] = idx
         cv_index = cv_index.astype(int)
-        print 'Done Kfold'
+        print ('Done Kfold')
     
     np.save(INPUT_PATH + cv_id_name, cv_index)
     return 
@@ -124,17 +128,16 @@ def load_data(flist, drop_duplicates=False):
     X_train = pd.DataFrame()
     test = pd.DataFrame()
 
-    print 'Reading train dataset'
-    for i in flist['train']:
+    print ('Reading train dataset')
+    for i in flist['train']: # why need many train data?
         X_train = pd.concat([X_train, paratext.load_csv_to_pandas(PATH+i, allow_quoted_newlines=True)],axis=1)
 
-    print 'train dataset is created'
+    print ('train dataset is created')
 
-
-    print 'Reading target data'
+    print ('Reading target data')
     y_train = paratext.load_csv_to_pandas(PATH+flist['target'][0], allow_quoted_newlines=True)['target']
 
-    print 'Reading train dataset'
+    print ('Reading train dataset')
     for i in flist['test']:
         test = pd.concat([test, paratext.load_csv_to_pandas(PATH+i, allow_quoted_newlines=True)],axis=1)
 
@@ -142,14 +145,14 @@ def load_data(flist, drop_duplicates=False):
     #print X_train.columns
     #print test.columns
     assert( (False in X_train.columns == test.columns) == False)
-    print 'train shape :{}'.format(X_train.shape)
+    print ('train shape :{}'.format(X_train.shape))
     if drop_duplicates == True:
         #delete identical columns
         unique_col = X_train.T.drop_duplicates().T.columns
         X_train = X_train[unique_col]
         test = test[unique_col]
         assert( all(X_train.columns == test.columns))
-        print 'train shape after concat and drop_duplicates :{}'.format(X_train.shape)
+        print ('train shape after concat and drop_duplicates :{}'.format(X_train.shape))
 
     # drop constant features
     #X_train = X_train.loc[:, (X_train != X_train.ix[0]).any()] 
@@ -164,31 +167,31 @@ def load_data(flist, drop_duplicates=False):
 
 # ID is different by problem. So this function is disabled.
 def save_pred_as_submit_format(pred_path, output_file, col_name=('ID', "TARGET")):
-    print 'writing prediction as submission format'
-    print 'read prediction <{}>'.format(pred_path)
+    print ('writing prediction as submission format')
+    print ('read prediction <{}>'.format(pred_path))
     pred = paratext.load_csv_to_pandas(pred_path, allow_quoted_newlines=True).values
     #(((test.mean(1) - test.mean(1).mean())/test.mean(1).std()/100. + 0.5).values + pred)/2.0
     submission = pd.read_csv(INPUT_PATH+SUBMIT_FORMAT)
     submission[col_name[1]] = pred
     submission.to_csv( output_file, columns = col_name, index = None )
-    print 'done writing'
+    print ('done writing')
     return
 
 #evalation function
 def eval_pred( y_true, y_pred, eval_type):
     if eval_type == 'logloss':#eval_typeはここに追加
         loss = ll( y_true, y_pred )
-        print "logloss: ", loss
+        print ("logloss: ", loss)
         return loss            
     
     elif eval_type == 'auc':
         loss = AUC( y_true, y_pred )
-        print "AUC: ", loss
+        print ("AUC: ", loss)
         return loss             
     
     elif eval_type == 'rmse':
         loss = np.sqrt(mean_squared_error(y_true, y_pred))
-        print "rmse: ", loss
+        print ("rmse: ", loss)
         return loss
 
 
@@ -290,13 +293,13 @@ class BaseModel(BaseEstimator):
         cls.eval_type = eval_type
         
         if cls.problem_type == 'classification':
-            print 'Setting Problem:{}, Type:{}, Eval:{}'.format(cls.problem_type,
+            print ('Setting Problem:{}, Type:{}, Eval:{}'.format(cls.problem_type,
                                                                 cls.classification_type,
-                                                                cls.eval_type)
+                                                                cls.eval_type))
 
         elif cls.problem_type == 'regression':
-            print 'Setting Problem:{}, Eval:{}'.format(cls.problem_type,
-                                                        cls.eval_type)
+            print ('Setting Problem:{}, Eval:{}'.format(cls.problem_type,
+                                                        cls.eval_type))
 
         return
 
@@ -307,13 +310,13 @@ class BaseModel(BaseEstimator):
 
     def make_multi_cols(self, num_class, name):
         '''make cols for multi-class predictions'''
-        cols = ['c' + str(i) + '_' for i in xrange(num_class)]
+        cols = ['c' + str(i) + '_' for i in range(num_class)]
         cols = map(lambda x: x + name, cols)
         return cols
 
 
     def run(self):
-        print 'running model: {}'.format(self.name)
+        print ('running model: {}'.format(self.name))
         X, y, test = self.load_data()
         num_class = len(set(y)) # only for multi-class classification
         #print X.shape, test.shape
@@ -345,12 +348,12 @@ class BaseModel(BaseEstimator):
         
         #print 'using fold: {}'.format(self.fold_name)
         #skf = pd.read_pickle(INPUT_PATH+cv_id_filename)
-        print 'loading cv_fold file'
+        print( 'loading cv_fold file')
         a = np.load(INPUT_PATH + self.fold_name + '.npy')
         #cv_index = {}
         #set_name = self.fold_name
         #creating cv_index format
-        #for i in xrange(5):
+        #for i in range(5):
         #    train_cv = a.loc[(a[set_name]!=i).values, set_name].index
         #    test_cv = a.loc[(a[set_name]==i).values, set_name].index
         #    cv_index[i] = {}
@@ -359,8 +362,8 @@ class BaseModel(BaseEstimator):
 
         #skf = pd.DataFrame(cv_index).stack().T
         clf = self.build_model()
-        print "Creating train and test sets for stacking."
-        #print "\nLevel 0"
+        print ("Creating train and test sets for stacking.")
+        #print( "\nLevel 0"
 
         ############# for binary #############
         if BaseModel.problem_type == 'regression' or BaseModel.classification_type == 'binary':
@@ -383,19 +386,19 @@ class BaseModel(BaseEstimator):
 
         ############## Start stacking ################
         evals = []
-        for i in xrange(n_folds):# of n_folds
+        for i in range(n_folds):# of n_folds
             train_fold = (a!=i)
             test_fold = (a==i)
-            print "Fold", i
-            #print "train:", len(train_fold), "test: ", len(test)
-            #print X
-            #print train_fold
+            print( "Fold", i)
+            #print( "train:", len(train_fold), "test: ", len(test)
+            #print( X
+            #print( train_fold
             X_train = X[train_fold].dropna(how='all')
             y_train = y[train_fold].dropna(how='all')
             X_test = X[test_fold].dropna(how='all')
             y_test = y[test_fold].dropna(how='all')
             
-            #print X_train,y_train,X_test,y_test
+            #print( X_train,y_train,X_test,y_test
             if 'sklearn' in str(type(clf)):
                 clf.fit(X_train, y_train)
             else:
@@ -404,7 +407,7 @@ class BaseModel(BaseEstimator):
 
             if BaseModel.problem_type == 'classification' and BaseModel.classification_type == 'binary':            
                 #if using the mean of the prediction of each n_fold
-                #print str(type(clf))
+                #print( str(type(clf))
                 if 'sklearn' in str(type(clf)):
                     y_submission = clf.predict_proba(X_test)[:,1]
                 else:
@@ -420,9 +423,9 @@ class BaseModel(BaseEstimator):
                 y_submission = clf.predict(X_test)
 
             #add .values for numpy.
-            #print test_fold
-            #print y_submission
-            #print dataset_blend_train
+            #print( test_fold
+            #print( y_submission
+            #print( dataset_blend_train
             #dataset_blend_train[test_fold.values] = y_submission
             #depend version of numpy
             try:
@@ -455,13 +458,13 @@ class BaseModel(BaseEstimator):
 
         dataset_blend_test /= n_folds
         
-        for i in xrange(n_folds):
-            print 'Fold{}: {}'.format(i+1, evals[i])
-        print '{} CV Mean: '.format(BaseModel.eval_type), np.mean(evals), ' Std: ', np.std(evals)
+        for i in range(n_folds):
+            print( 'Fold{}: {}'.format(i+1, evals[i]))
+        print( '{} CV Mean: '.format(BaseModel.eval_type), np.mean(evals), ' Std: ', np.std(evals))
 
         #Saving 上でモデルの保存も追加できる
         if self.kind != 'cv':
-            print 'Saving results'
+            print( 'Saving results')
 
             if (BaseModel.problem_type == 'classification' and BaseModel.classification_type == 'binary') or (BaseModel.problem_type == 'regression'):
                 dataset_blend_train = pd.DataFrame(dataset_blend_train,columns=['{}_stack'.format(self.name)])
@@ -541,7 +544,7 @@ class IntervalEvaluation(Callback):
             y_pred = self.model.predict_proba(self.X_val, verbose=0)
             score = AUC(self.y_val, y_pred)
             #logging.info("interval evaluation - epoch: {:d} - score: {:.6f}".format(epoch, score))
-            print "interval evaluation - epoch: {:d} - score: {:.6f}".format(epoch, score)
+            print( "interval evaluation - epoch: {:d} - score: {:.6f}".format(epoch, score))
 
 
 class KerasClassifier(BaseEstimator, ClassifierMixin):
@@ -630,10 +633,10 @@ class KerasClassifier(BaseEstimator, ClassifierMixin):
 
         #set callbacks
         #self.callbacks = [IntervalEvaluation(validation_data=(X, y), interval=5)]
-        #print self.callbacks
+        #print( self.callbacks
 
-        #print all(pd.DataFrame(np.isfinite(X)))
-        #print X.shape
+        #print( all(pd.DataFrame(np.isfinite(X)))
+        #print( X.shape
         return self.nn.fit(X, y, batch_size=self.batch_size, nb_epoch=self.nb_epoch, validation_data=self.validation_data, verbose=self.verbose, callbacks=self.callbacks, validation_split=self.validation_split, shuffle=self.shuffle, class_weight=self.class_weight, sample_weight=self.sample_weight)
 
     def predict_proba(self, X, batch_size=128, verbose=1):
@@ -662,7 +665,6 @@ class XGBClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, params={}, num_round=50 ):
         self.params = params
         self.num_round = num_round
-
         self.clf = xgb
         
     def fit(self, X, y=[], X_test=None, y_test=None, sample_weight=None, eval_set=None, eval_metric=None,
@@ -673,7 +675,6 @@ class XGBClassifier(BaseEstimator, ClassifierMixin):
         if X_test is not None:
             dtest = xgb.DMatrix(X_test, label=y_test, missing=-999)
             watchlist  = [(dtrain, 'train'), (dtest, 'validation')]
-        
         else:
             watchlist  = [(dtrain, 'train')]
         
@@ -685,6 +686,45 @@ class XGBClassifier(BaseEstimator, ClassifierMixin):
         #return self.clf.predict(X, output_margin=output_margin, ntree_limit=ntree_limit)
         
         return self.clf.predict(dtest)
+
+
+# Richard- construct lightgbm classifier
+class GBMClassifier(BaseEstimator, ClassifierMixin):
+    '''
+    (Example)
+    from base import GBMClassifier
+    class GBMModelV1(GBMClassifier):
+        def __init__(self,**params):
+            super(GBMModelV1, self).__init__(**params)
+
+    a = GBMModelV1(colsample_bytree=0.9, learning_rate=0.01,max_depth=5, min_child_weight=1,n_estimators=300, nthread=-1, objective='binary:logistic', seed=0,silent=True, subsample=0.8)
+    a.fit(X_train, y_train, eval_metric='logloss',eval_set=[(X_train, y_train),(X_test, y_test)])
+    
+    '''
+    def __init__(self, params={}, num_round=1000):
+        self.params = params
+        self.num_round = num_round
+        self.clf = lgb
+
+    def fit(self, X, y=[], X_test=None, y_test=None, early_stopping_rounds=None, verbose=True):
+        print(X.shape, y.shape)
+        dtrain = lgb.Dataset(data=X, label=y)
+        if X_test is not None:
+            dtest = lgb.Dataset(X_test, label=y_test)
+            watchlist  = [dtrain, dtest]
+        else:
+            watchlist  = [dtrain]
+
+        self.clf = lgb.train(self.params, 
+                             dtrain,
+                             num_boost_round=self.num_round, 
+                             valid_sets=watchlist,
+                             early_stopping_rounds=early_stopping_rounds)
+        return self.clf
+
+    def predict_proba(self, X, output_margin=False, ntree_limit=0):
+        # dtest = lgb.Dataset(X)
+        return self.clf.predict(X)
 
 
 class VWClassifier(BaseEstimator, ClassifierMixin):
@@ -740,22 +780,22 @@ class VWClassifier(BaseEstimator, ClassifierMixin):
         X = pd.concat([X, y], axis=1)
         X = X.reset_index()
         #if os.path.isfile(TEMP_PATH+self.train_vw_data) == False:
-        print "Generating VW Training Instances: ", asctime()
+        print( "Generating VW Training Instances: ", asctime())
         X['TrainInstances'] = X.apply(self.genTrainInstances, axis=1)
-        print "Finished Generating Train Instances: ", asctime()
+        print( "Finished Generating Train Instances: ", asctime())
 
         #if os.path.isfile(TEMP_PATH+self.train_vw_data) == False:
-        print "Writing Train Instances To File: ", asctime()
+        print( "Writing Train Instances To File: ", asctime())
         trainInstances = list(X['TrainInstances'].values)
         f = open(TEMP_PATH+'train_vw.data','w')
         f.writelines(["%s\n" % row  for row in trainInstances])
         f.close()
-        print "Finished Writing Train Instances: ", asctime()
+        print( "Finished Writing Train Instances: ", asctime())
         #else:
-        #    print 'already generated {}'.format(train_vw_data)
+        #    print( 'already generated {}'.format(train_vw_data)
 
         subprocess.call(self.trainCommand)
-        print "Finished Training: ", asctime()      
+        print( "Finished Training: ", asctime())      
         return
 
     def readPredictFile(self):
@@ -772,16 +812,16 @@ class VWClassifier(BaseEstimator, ClassifierMixin):
     def predict_model(self,test):
         #global environmentDict, predictCommand, df_test
         test = test.reset_index()
-        print "Building Test Instances: ", asctime()
+        print( "Building Test Instances: ", asctime())
         test['TestInstances'] = test.apply(self.genTestInstances, axis=1)
-        print "Finished Generating Test Instances: ", asctime()
+        print( "Finished Generating Test Instances: ", asctime())
 
-        print "Writing Test Instances: ", asctime()
+        print( "Writing Test Instances: ", asctime())
         testInstances = list(test['TestInstances'].values)
         f = open(TEMP_PATH+'test_vw.data','w')
         f.writelines(["%s\n" % row  for row in testInstances])
         f.close()
-        print "Finished Writing Test Instances: ", asctime()
+        print( "Finished Writing Test Instances: ", asctime())
 
         subprocess.call(self.predictCommand, env=self.environmentDict)
 
@@ -894,7 +934,7 @@ class KerasRegressor(BaseEstimator, RegressorMixin):
 
         #set initial weights
         self.nn.set_weights(self.init_weight)
-        print X.shape
+        print( X.shape)
         return self.nn.fit(X, y, batch_size=self.batch_size, nb_epoch=self.nb_epoch, validation_data=self.validation_data, verbose=self.verbose, callbacks=self.callbacks, validation_split=self.validation_split, shuffle=self.shuffle, class_weight=self.class_weight, sample_weight=self.sample_weight)
 
     def predict(self, X, batch_size=128, verbose=1):
@@ -944,7 +984,7 @@ class XGBRegressor(BaseEstimator, RegressorMixin):
             watchlist  = [(dtrain, 'train')]
  
         #num_round = self.num_round
-        #print self.clf
+        #print( self.clf
         self.clf = xgb.train(self.params, dtrain, self.num_round, watchlist)
         return self.clf
 

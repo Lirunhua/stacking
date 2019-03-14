@@ -3,3 +3,7 @@
 /stacking.egg-info/*
 stacking/__init__.pyc
 stacking/base.pyc
+*.csv
+.vscode
+/examples/*
+tmp.py
